@@ -1,3 +1,5 @@
 clarifai>=10.7.0
 streamlit>=1.32.2
 embedchain
+gitpython==3.1.38 
+PyGithub==1.59.1
