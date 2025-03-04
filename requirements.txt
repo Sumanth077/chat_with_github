@@ -1,6 +1,3 @@
 clarifai>=10.7.0
-clarifai-grpc>=10.7.0
-pillow>=10.4.0
-st-annotated-text>=4.0.1
-streamlit-image-select>=0.6.0
 streamlit>=1.32.2
+embedchain
