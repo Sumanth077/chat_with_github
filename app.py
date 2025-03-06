@@ -39,7 +39,7 @@ if "app_instance" not in st.session_state:
             "llm": {
                 "provider": "clarifai",
                 "config": {
-                    "model": "https://clarifai.com/deepseek-ai/deepseek-chat/models/DeepSeek-R1-Distill-Qwen-32B",
+                    "model": "https://clarifai.com/openbmb/miniCPM/models/MiniCPM3-4B",
                     "model_kwargs": {
                         "temperature": 0.5,
                         "max_tokens": 1000
@@ -87,7 +87,7 @@ def handle_repo_input(repo_url: str):
             parts = repo_url.strip('/').split('/')
             repo = f"{parts[-2]}/{parts[-1]}"
         else:
-            repo = repo_url  # Assume already in owner/repo format
+            repo = repo_url
             
         with st.spinner(f"Adding repository {repo} to knowledge base..."):
             loader = get_loader()
@@ -115,86 +115,94 @@ def clear_repository():
     st.session_state.upload_status = ""
     gc.collect()
 
-# UI Components for main content
-def main():
-    # Sidebar for repository input
-    with st.sidebar:
-        st.header("Add your GitHub repository!")
-        
-        github_url = st.text_input("Enter GitHub repository URL or owner/repo", placeholder="https://github.com/owner/repo or owner/repo")
+# Utility function to convert generator to text
+def get_generator_text(generator):
+    """Convert a generator response to text."""
+    try:
+        # Attempt to join the generator if it's an iterable
+        if hasattr(generator, '__iter__'):
+            return ''.join(str(chunk) for chunk in generator)
+        # If it's not an iterable, return string representation
+        return str(generator)
+    except Exception as e:
+        return f"Error processing response: {str(e)}"
 
-        load_repo = st.button("Load Repository")
-        if github_url and load_repo:
-            handle_repo_input(github_url)
-            
-        # Show status message if any
-        if st.session_state.upload_status:
-            st.markdown(st.session_state.upload_status)
-
-    # Main content area
-    col1, col2 = st.columns([6, 1])
-    with col1:
-        if st.session_state.repo_added:
-            st.header(f"Chat with GitHub 💬")
-        else:
-            st.header("Chat with GitHub Repositories")
-    with col2:
-        if st.session_state.repo_added:
-            st.button("Clear ↺", on_click=reset_chat)
-
-    # Display current repository info if loaded
-    if st.session_state.repo_added:
-        st.info(f"Active Repository: **{st.session_state.current_repo}**")
-        
-        # Display chat messages from history
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-
-        # Accept user input
-        if prompt := st.chat_input("What's up?"):
-            # Display user message in chat message container
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            # Display assistant response in chat message container
-            with st.chat_message("assistant"):
-                message_placeholder = st.empty()
-                
-                # Process the question
-                if st.session_state.processing:
-                    message_placeholder.markdown("Thinking...")
-                else:
-                    st.session_state.processing = True
-                    
-                    try:
-                        # Get the answer (streaming isn't supported in this implementation)
-                        answer = st.session_state.app_instance.chat(prompt)
-                        
-                        # Display the answer
-                        message_placeholder.markdown(answer)
-                        
-                        # Add to chat history
-                        st.session_state.messages.append({"role": "user", "content": prompt})
-                        st.session_state.messages.append({"role": "assistant", "content": answer})
-                    except Exception as e:
-                        message_placeholder.markdown(f"Error: {str(e)}")
-                    finally:
-                        st.session_state.processing = False
-    else:
-        # Show welcome message when no repository is loaded
-        st.markdown("""
-        ### Welcome to GitHub Repository Chat! 👋
-        
-        This app allows you to chat with any GitHub repository using RAG (Retrieval-Augmented Generation).
-        
-        To get started:
-        1. Enter a GitHub repository URL in the sidebar
-        2. Click "Load Repository"
-        3. Start asking questions about the repository!
-        
-        The app will process the repository contents and allow you to have a conversation about its code, structure, and functionality.
-        """)
+# Sidebar for repository input
+with st.sidebar:
+    st.header("Add your GitHub repository!")
     
-# Run the main app
-main()
+    github_url = st.text_input("Enter GitHub repository URL or owner/repo", placeholder="https://github.com/owner/repo or owner/repo")
+
+    load_repo = st.button("Load Repository")
+    if github_url and load_repo:
+        handle_repo_input(github_url)
+        
+    # Show status message if any
+    if st.session_state.upload_status:
+        st.markdown(st.session_state.upload_status)
+
+# Main content area
+col1, col2 = st.columns([6, 1])
+with col1:
+    st.header(f"Chat with GitHub 💬")
+with col2:
+    if st.session_state.repo_added:
+        st.button("Clear ↺", on_click=reset_chat)
+
+# Display current repository info if loaded
+if st.session_state.repo_added:
+    st.info(f"Active Repository: **{st.session_state.current_repo}**")
+    
+    # Display chat messages from history
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Accept user input
+    if prompt := st.chat_input("What's up?"):
+        # Display user message in chat message container
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        # Display assistant response in chat message container
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            
+            # Process the question
+            if st.session_state.processing:
+                message_placeholder.markdown("Thinking...")
+            else:
+                st.session_state.processing = True
+                
+                try:
+                    # Get the answer (streaming isn't supported in this implementation)
+                    answer_generator = st.session_state.app_instance.chat(prompt)
+                    answer = get_generator_text(answer_generator)
+                    print(f"Answer: {answer}")
+                    
+                    # Display the answer
+                    message_placeholder.markdown(answer)
+                    
+                    # Add to chat history
+                    st.session_state.messages.append({"role": "user", "content": prompt})
+                    st.session_state.messages.append({"role": "assistant", "content": answer})
+                except Exception as e:
+                    message_placeholder.markdown(f"Error: {str(e)}")
+                finally:
+                    st.session_state.processing = False
+else:
+    # Show welcome message when no repository is loaded
+    st.markdown("""
+    ### Welcome to GitHub Repository Chat! 👋
+    
+    This app allows you to chat with any GitHub repository using RAG (Retrieval-Augmented Generation).
+    
+    To get started:
+    1. Enter a GitHub repository URL in the sidebar
+    2. Click "Load Repository"
+    3. Start asking questions about the repository!
+    
+    The app will process the repository contents and allow you to have a conversation about its code, structure, and functionality.
+    """)
+
+# Remove the main() function call and keep the footer
 footer(st)
